@@ -60,7 +60,7 @@ fn set_time(sec: u32, msec: u32) {
     // println!("sec={} msec={}", sec, msec);
 
     //https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
-    // Number of 100 ns intervals since Jan 1, 1601 (UTC) to UNIX epochs
+    // Number of 100 ns intervals since Jan 1, 1601 (UTC) to UNIX epochs -> https://stackoverflow.com/questions/10905892/equivalent-of-gettimeday-for-windows
     let mut ns_intervals = 116444736000000000u64;
 
     ns_intervals += sec as u64 * (1_000_000_000 / 100); // 1 sec = 10e9 ns
