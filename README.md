@@ -17,3 +17,10 @@ cargo build --target x86_64-pc-windows-msvc --release
 
 cargo build --target x86_64-pc-windows-gnu --release
 ```
+
+To link statically, add the following to rustflags in `.cargo/config.toml`
+
+```
+rustflags = ["-C", "target-feature=+crt-static"]
+```
+From https://github.com/KodrAus/rust-cross-compile/blob/main/README.md
