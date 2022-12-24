@@ -15,12 +15,12 @@ fn main() {
     sock.recv_from(&mut ntp_packet).unwrap();
 
     //2208988800 => number of secs between NTP epoch & UNIX epochs
-    let txTimeSecs = ((ntp_packet[40] as u32) << 24
+    let tx_time_secs = ((ntp_packet[40] as u32) << 24
         | (ntp_packet[41] as u32) << 16
         | (ntp_packet[42] as u32) << 8
-        | (ntp_packet[43] as u32) - 2208988800);
+        | (ntp_packet[43] as u32)) - 2208988800;
 
-    let txTimeFracSecs = (ntp_packet[44] as u32) << 24
+    let tx_time_frac_secs = (ntp_packet[44] as u32) << 24
         | (ntp_packet[45] as u32) << 16
         | (ntp_packet[46] as u32) << 8
         | (ntp_packet[47] as u32);
@@ -28,8 +28,8 @@ fn main() {
     // 116444736000000000 ==> Number of 100 ns intervals between Win32 epochs & UNIX epochs
     // https://en.wikipedia.org/wiki/Epoch_(computing)
     let mut ns_intervals: u64 = 116444736000000000;
-    ns_intervals += txTimeSecs as u64 * (1_000_000_000 / 100);
-    ns_intervals += (txTimeFracSecs as u64 * 1_000_000 * 10) / 4294967296;
+    ns_intervals += tx_time_secs as u64 * (1_000_000_000 / 100);
+    ns_intervals += (tx_time_frac_secs as u64 * 1_000_000 * 10) / 4294967296;
 
     let filetime = Foundation::FILETIME {
         dwLowDateTime: (ns_intervals & 0xffffffff) as u32,
@@ -50,7 +50,7 @@ fn main() {
         FileTimeToSystemTime(&filetime, &mut systemtime);
         SetSystemTime(&systemtime);
         println!(
-            "[+] Time set to\n year={} month={} day={} hour={} min={} sec={} ms={}",
+            "[+] Time set to\nyear={} month={} day={} hour={} min={} sec={} ms={}",
             systemtime.wYear,
             systemtime.wMonth,
             systemtime.wDay,
