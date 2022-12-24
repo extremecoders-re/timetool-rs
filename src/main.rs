@@ -1,72 +1,35 @@
-use sntpc::{Error, NtpContext, NtpTimestampGenerator, NtpUdpSocket, Result};
-use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
-use std::time::{Duration, SystemTime};
-
+use std::net;
 use windows_sys::Win32::Foundation;
 use windows_sys::Win32::System::SystemInformation::SetSystemTime;
 use windows_sys::Win32::System::Time::FileTimeToSystemTime;
 
-#[derive(Copy, Clone, Default)]
-struct StdTimestampGen {
-    duration: Duration,
-}
+fn main() {
+    let sock = net::UdpSocket::bind("0.0.0.0:0").unwrap();
 
-impl NtpTimestampGenerator for StdTimestampGen {
-    fn init(&mut self) {
-        self.duration = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap();
-    }
+    // https://lettier.github.io/posts/2016-04-26-lets-make-a-ntp-client-in-c.html
+    let mut ntp_packet = [0; 48];
+    ntp_packet[0] = 0x43;
 
-    fn timestamp_sec(&self) -> u64 {
-        // println!("timestamp_sec= {}", self.duration.as_secs());
-        self.duration.as_secs()
-    }
+    sock.send_to(&ntp_packet, "time.cloudflare.com:123")
+        .unwrap();
+    sock.recv_from(&mut ntp_packet).unwrap();
 
-    fn timestamp_subsec_micros(&self) -> u32 {
-        // println!("timestamp_subsec_micros= {}", self.duration.subsec_micros());
-        self.duration.subsec_micros()
-    }
-}
+    //2208988800 => number of secs between NTP epoch & UNIX epochs
+    let txTimeSecs = ((ntp_packet[40] as u32) << 24
+        | (ntp_packet[41] as u32) << 16
+        | (ntp_packet[42] as u32) << 8
+        | (ntp_packet[43] as u32) - 2208988800);
 
-#[derive(Debug)]
-struct UdpSocketWrapper {
-    socket: UdpSocket,
-}
+    let txTimeFracSecs = (ntp_packet[44] as u32) << 24
+        | (ntp_packet[45] as u32) << 16
+        | (ntp_packet[46] as u32) << 8
+        | (ntp_packet[47] as u32);
 
-impl NtpUdpSocket for UdpSocketWrapper {
-    fn send_to<T: ToSocketAddrs>(&self, buf: &[u8], addr: T) -> Result<usize> {
-        match self.socket.send_to(buf, addr) {
-            Ok(usize) => Ok(usize),
-            Err(e) => {
-                println!("send_to err {}", e.to_string());
-                Err(Error::Network)
-            }
-        }
-    }
-
-    fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        match self.socket.recv_from(buf) {
-            Ok((size, addr)) => Ok((size, addr)),
-            Err(e) => {
-                println!("recv_from err {}", e.to_string());
-                Err(Error::Network)
-            }
-        }
-    }
-}
-
-fn set_time(sec: u32, msec: u32) {
-    // println!("sec={} msec={}", sec, msec);
-
-    //https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
-    // Number of 100 ns intervals since Jan 1, 1601 (UTC) to UNIX epochs -> https://stackoverflow.com/questions/10905892/equivalent-of-gettimeday-for-windows
-    let mut ns_intervals = 116444736000000000u64;
-
-    ns_intervals += sec as u64 * (1_000_000_000 / 100); // 1 sec = 10e9 ns
-
-    // http://thompsonng.blogspot.com/2010/04/ntp-timestamp_21.html
-    ns_intervals += (msec as u64 * 1_000_000 * 10)/4294967296; // 1 sec = 10e6 ms, 4294967296 == 2**32
+    // 116444736000000000 ==> Number of 100 ns intervals between Win32 epochs & UNIX epochs
+    // https://en.wikipedia.org/wiki/Epoch_(computing)
+    let mut ns_intervals: u64 = 116444736000000000;
+    ns_intervals += txTimeSecs as u64 * (1_000_000_000 / 100);
+    ns_intervals += (txTimeFracSecs as u64 * 1_000_000 * 10) / 4294967296;
 
     let filetime = Foundation::FILETIME {
         dwLowDateTime: (ns_intervals & 0xffffffff) as u32,
@@ -88,28 +51,13 @@ fn set_time(sec: u32, msec: u32) {
         SetSystemTime(&systemtime);
         println!(
             "[+] Time set to\n year={} month={} day={} hour={} min={} sec={} ms={}",
-            systemtime.wYear, systemtime.wMonth, systemtime.wDay, systemtime.wHour, systemtime.wMinute, systemtime.wSecond, systemtime.wMilliseconds
+            systemtime.wYear,
+            systemtime.wMonth,
+            systemtime.wDay,
+            systemtime.wHour,
+            systemtime.wMinute,
+            systemtime.wSecond,
+            systemtime.wMilliseconds
         );
-    }
-}
-
-fn main() {
-    let socket = UdpSocket::bind("0.0.0.0:0").expect("Unable to create UDP socket");
-
-    socket
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .expect("Unable to set UDP socket read timeout");
-
-    let sock_wrapper = UdpSocketWrapper { socket };
-    let ntp_context = NtpContext::new(StdTimestampGen::default());
-
-    println!("[+] Querying time");
-    let result = sntpc::get_time("time.cloudflare.com:123", sock_wrapper, ntp_context);
-
-    match result {
-        Ok(time) => {
-            set_time(time.sec(), time.sec_fraction());
-        }
-        Err(_) => println!("!Error"),
     }
 }
