@@ -1,3 +1,4 @@
+use std::env;
 use std::net::{self, IpAddr, Ipv4Addr, ToSocketAddrs};
 use windows_sys::Win32::Foundation;
 use windows_sys::Win32::System::SystemInformation::SetSystemTime;
@@ -19,6 +20,16 @@ fn dnslookup_ipv4(domain: &str) -> Option<Ipv4Addr> {
 }
 
 fn main() {
+    let ntp_server : String;
+
+    ntp_server = if env::args().len() > 1 {
+         env::args().skip(1).next().unwrap()
+    }
+    else {
+        println!("[+] Using default NTP server");
+        "time.cloudflare.com".to_owned()
+    };
+
     // Bind on v4 only
     let sock = net::UdpSocket::bind("0.0.0.0:0").unwrap();
 
@@ -56,10 +67,9 @@ fn main() {
     ntp_packet[0] = 0b00_010_011;
 
     // https://gist.github.com/mutin-sa/eea1c396b1e610a2da1e5550d94b0453
-    const NTP_SERVER_ADDR: &str = "time.cloudflare.com";
-    println!("[+] Resolving DNS: {}", NTP_SERVER_ADDR);
+    println!("[+] Resolving DNS: {}", ntp_server);
 
-    let ntp_server_ipv4 = dnslookup_ipv4(NTP_SERVER_ADDR).unwrap();
+    let ntp_server_ipv4 = dnslookup_ipv4(&ntp_server).unwrap();
     println!("[+] Querying NTP server: {}", ntp_server_ipv4);
 
     sock.send_to(&ntp_packet, (ntp_server_ipv4, 123)).unwrap();
